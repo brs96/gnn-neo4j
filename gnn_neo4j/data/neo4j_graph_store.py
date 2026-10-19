@@ -2,10 +2,10 @@ import weakref
 
 import torch
 from neo4j import Driver, GraphDatabase
-
-from torch_geometric.data.database_graph_store import DatabaseGraphStore
 from torch_geometric.data.graph_store import EdgeAttr, EdgeLayout
 from torch_geometric.typing import EdgeTensorType
+
+from gnn_neo4j.data.database_graph_store import DatabaseGraphStore
 
 
 def _close_driver(driver: Driver) -> None:
@@ -38,6 +38,7 @@ class Neo4jGraphStore(DatabaseGraphStore):
         nodeid_property (str): Property holding the integer node ID, shared by
             every node label.
     """
+
     def __init__(
         self,
         uri: str,
@@ -56,8 +57,7 @@ class Neo4jGraphStore(DatabaseGraphStore):
 
     def _get_driver(self) -> Driver:
         if self._driver is None:
-            self._driver = GraphDatabase.driver(self.uri,
-                                                auth=(self.user, self.pwd))
+            self._driver = GraphDatabase.driver(self.uri, auth=(self.user, self.pwd))
             # weakref.finalize (not atexit) so the handler is dropped when
             # this store is garbage-collected. atexit.register would stack a
             # new handler per unpickled copy (DataLoader workers) and never
@@ -87,8 +87,7 @@ class Neo4jGraphStore(DatabaseGraphStore):
         (procedure missing, auth, connectivity) is treated as unavailable.
         """
         try:
-            with self._get_driver().session(
-                    database=self.database_name) as session:
+            with self._get_driver().session(database=self.database_name) as session:
                 session.run("RETURN apoc.version() AS v").single()
             return True
         except Exception:
@@ -102,8 +101,9 @@ class Neo4jGraphStore(DatabaseGraphStore):
 
         Returns the record dict, or ``None`` if the query produced no rows.
         """
-        with self._get_driver().session(database=self.database_name,
-                                        fetch_size=-1) as session:
+        with self._get_driver().session(
+            database=self.database_name, fetch_size=-1
+        ) as session:
             result = session.run(query, **params)
             records = list(result)
         return records[0] if records else None
@@ -117,10 +117,11 @@ class Neo4jGraphStore(DatabaseGraphStore):
         src_type, rel_type, dst_type = edge_attr.edge_type
         nid = self.nodeid_property
 
-        query = (f"MATCH (a:{src_type})-[r:{rel_type}]->(b:{dst_type}) "
-                 f"RETURN a.{nid} AS src, b.{nid} AS dst")
-        with self._get_driver().session(
-                database=self.database_name) as session:
+        query = (
+            f"MATCH (a:{src_type})-[r:{rel_type}]->(b:{dst_type}) "
+            f"RETURN a.{nid} AS src, b.{nid} AS dst"
+        )
+        with self._get_driver().session(database=self.database_name) as session:
             records = list(session.run(query))
 
         if not records:
@@ -154,23 +155,22 @@ class Neo4jGraphStore(DatabaseGraphStore):
             rows, cols = edge_index
         else:
             rows, cols = edge_index[0], edge_index[1]
-        pairs = list(zip(rows.tolist(), cols.tolist()))
+        pairs = list(zip(rows.tolist(), cols.tolist(), strict=True))
         nid = self.nodeid_property
-        query = (f"UNWIND $pairs AS p "
-                 f"MATCH (a:{src_type} {{{nid}: p[0]}}) "
-                 f"MATCH (b:{dst_type} {{{nid}: p[1]}}) "
-                 f"MERGE (a)-[:{rel_type}]->(b)")
-        with self._get_driver().session(
-                database=self.database_name) as session:
+        query = (
+            f"UNWIND $pairs AS p "
+            f"MATCH (a:{src_type} {{{nid}: p[0]}}) "
+            f"MATCH (b:{dst_type} {{{nid}: p[1]}}) "
+            f"MERGE (a)-[:{rel_type}]->(b)"
+        )
+        with self._get_driver().session(database=self.database_name) as session:
             session.run(query, pairs=pairs)
         return True
 
     def _remove_edge_index(self, edge_attr: EdgeAttr) -> bool:
         r"""Delete all relationships of the given edge type from Neo4j."""
         src_type, rel_type, dst_type = edge_attr.edge_type
-        query = (f"MATCH (:{src_type})-[r:{rel_type}]->(:{dst_type}) "
-                 f"DELETE r")
-        with self._get_driver().session(
-                database=self.database_name) as session:
+        query = f"MATCH (:{src_type})-[r:{rel_type}]->(:{dst_type}) DELETE r"
+        with self._get_driver().session(database=self.database_name) as session:
             session.run(query)
         return True

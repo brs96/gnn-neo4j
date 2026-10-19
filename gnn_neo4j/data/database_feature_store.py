@@ -6,15 +6,13 @@ from typing import Any
 import numpy as np
 import torch
 from torch import Tensor
-
 from torch_geometric.data.feature_store import FeatureStore, TensorAttr
 from torch_geometric.typing import FeatureTensorType, NodeType
 
 
 def _nids_from_attr(attr: TensorAttr) -> list[int]:
     r"""Coerce ``attr.index`` to a list of Python ints."""
-    nids = (attr.index.tolist()
-            if isinstance(attr.index, Tensor) else list(attr.index))
+    nids = attr.index.tolist() if isinstance(attr.index, Tensor) else list(attr.index)
     return [int(n) for n in nids]
 
 
@@ -41,6 +39,7 @@ class FeatureCache(ABC):
         For cross-worker coherence use for example a network-backed
         cache like Redis or share a single store via ``num_workers=0``.
     """
+
     @abstractmethod
     def get(self, attr: TensorAttr) -> dict[int, np.ndarray]:
         r"""Return ``{nid: row}`` for the cached node IDs in ``attr.index``,
@@ -60,8 +59,9 @@ class FeatureCache(ABC):
     def multi_get(
         self,
         attrs: list[TensorAttr],
-    ) -> tuple[dict[tuple[NodeType | None, str], dict[int, np.ndarray]],
-               list[TensorAttr]]:
+    ) -> tuple[
+        dict[tuple[NodeType | None, str], dict[int, np.ndarray]], list[TensorAttr]
+    ]:
         r"""Look up multiple :class:`TensorAttr` in the cache.
 
         Returns:
@@ -129,12 +129,14 @@ class LRUFeatureCache(FeatureCache):
     Args:
         maxsize (int): Maximum number of cached rows.  Must be positive.
     """
+
     def __init__(self, maxsize: int) -> None:
         if maxsize <= 0:
             raise ValueError(f"maxsize must be positive, got {maxsize}")
         self._maxsize = maxsize
-        self._data: OrderedDict[tuple[NodeType | None, str, int],
-                                np.ndarray] = OrderedDict()
+        self._data: OrderedDict[tuple[NodeType | None, str, int], np.ndarray] = (
+            OrderedDict()
+        )
 
     def get(self, attr: TensorAttr) -> dict[int, np.ndarray]:
         hits: dict[int, np.ndarray] = {}
@@ -168,7 +170,8 @@ class LRUFeatureCache(FeatureCache):
     ) -> None:
         if nids is None:
             doomed = [
-                key for key in self._data
+                key
+                for key in self._data
                 if key[0] == group_name and key[1] == attr_name
             ]
         else:
@@ -212,6 +215,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         tensor_attr_cls (TensorAttr, optional): A user-defined
             :class:`TensorAttr` subclass. (default: :obj:`None`)
     """
+
     def __init__(
         self,
         cache: FeatureCache | None = None,
@@ -247,20 +251,22 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         cached, missing_attrs = self._cache_get(attrs)
 
         # decoded_map: {(group_name, attr_name): (np.ndarray, [fetched_nids])}
-        decoded_map: dict[tuple[NodeType | None, str], tuple[np.ndarray,
-                                                             list[int]]] = {}
+        decoded_map: dict[
+            tuple[NodeType | None, str], tuple[np.ndarray, list[int]]
+        ] = {}
         if missing_attrs:
             fetched = self._multi_fetch_remote_attrs(missing_attrs)
-            decoded_map = self._multi_decode_remote_attrs(
-                fetched, missing_attrs)
-            self._cache_put(
-                self._decoded_to_nid_map(decoded_map, missing_attrs))
+            decoded_map = self._multi_decode_remote_attrs(fetched, missing_attrs)
+            self._cache_put(self._decoded_to_nid_map(decoded_map, missing_attrs))
 
         result: list[FeatureTensorType] = []
         for attr in attrs:
             key = (attr.group_name, attr.attr_name)
-            nids = attr.index.tolist() if isinstance(
-                attr.index, Tensor) else list(attr.index)
+            nids = (
+                attr.index.tolist()
+                if isinstance(attr.index, Tensor)
+                else list(attr.index)
+            )
 
             nid_to_pos = {int(nid): i for i, nid in enumerate(nids)}
 
@@ -268,16 +274,15 @@ class DatabaseFeatureStore(FeatureStore, ABC):
 
             # Determine shape from cache hit or decoded result.
             sample = next(iter(cached_rows.values()), None)
-            if (sample is None and key in decoded_map
-                    and len(decoded_map[key][0])):
+            if sample is None and key in decoded_map and len(decoded_map[key][0]):
                 sample = decoded_map[key][0][0]
             if sample is None:
                 raise RuntimeError(
                     f"Could not determine shape for attr '{key}': no "
-                    f"cache hits and the database returned no records.")
+                    f"cache hits and the database returned no records."
+                )
 
-            shape = ((len(nids), *sample.shape) if sample.ndim > 0 else
-                     (len(nids), ))
+            shape = (len(nids), *sample.shape) if sample.ndim > 0 else (len(nids),)
             out = np.empty(shape, dtype=sample.dtype)
 
             for nid, row in cached_rows.items():
@@ -290,14 +295,14 @@ class DatabaseFeatureStore(FeatureStore, ABC):
                     # row index (src) with its output position, skipping nids
                     # the DB returned unexpectedly. Keeps rows aligned to their
                     # nid instead of slicing, which would shift on a gap.
-                    pairs = [(nid_to_pos[int(nid)], src)
-                             for src, nid in enumerate(attr_nids)
-                             if int(nid) in nid_to_pos]
+                    pairs = [
+                        (nid_to_pos[int(nid)], src)
+                        for src, nid in enumerate(attr_nids)
+                        if int(nid) in nid_to_pos
+                    ]
                     if pairs:
-                        pos = np.fromiter((p for p, _ in pairs),
-                                          dtype=np.int64)
-                        src = np.fromiter((s for _, s in pairs),
-                                          dtype=np.int64)
+                        pos = np.fromiter((p for p, _ in pairs), dtype=np.int64)
+                        src = np.fromiter((s for _, s in pairs), dtype=np.int64)
                         out[pos] = decoded_arr[src]
 
             result.append(torch.from_numpy(out))
@@ -351,8 +356,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
 
         Returns mapping: (group_name, attr_name) -> (records, fetched_nids)
         """
-        result: dict[tuple[NodeType | None, str], tuple[list[object],
-                                                        list[int]]] = {}
+        result: dict[tuple[NodeType | None, str], tuple[list[object], list[int]]] = {}
         for attr in attrs:
             records, fetched_nids = self._fetch_remote_attrs(attr)
             result[(attr.group_name, attr.attr_name)] = (records, fetched_nids)
@@ -360,8 +364,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
 
     def _multi_decode_remote_attrs(
         self,
-        fetched: dict[tuple[NodeType | None, str], tuple[list[object],
-                                                         list[int]]],
+        fetched: dict[tuple[NodeType | None, str], tuple[list[object], list[int]]],
         attrs: list[TensorAttr],
     ) -> dict[tuple[NodeType | None, str], tuple[np.ndarray, list[int]]]:
         r"""Decode all attrs. Override to optimize batch decoding.
@@ -373,8 +376,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         Returns mapping:
             (group_name, attr_name) -> (decoded_array, fetched_nids)
         """
-        result: dict[tuple[NodeType | None, str], tuple[np.ndarray,
-                                                        list[int]]] = {}
+        result: dict[tuple[NodeType | None, str], tuple[np.ndarray, list[int]]] = {}
         for attr in attrs:
             key = (attr.group_name, attr.attr_name)
             records, fetched_nids = fetched[key]
@@ -386,8 +388,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
 
     @staticmethod
     def _decoded_to_nid_map(
-        decoded_map: dict[tuple[NodeType | None, str], tuple[np.ndarray,
-                                                             list[int]]],
+        decoded_map: dict[tuple[NodeType | None, str], tuple[np.ndarray, list[int]]],
         attrs: list[TensorAttr],
     ) -> dict[tuple[NodeType | None, str], dict[int, np.ndarray]]:
         r"""Build a ``{(group_name, attr_name): {nid: row}}`` mapping from
@@ -400,17 +401,15 @@ class DatabaseFeatureStore(FeatureStore, ABC):
             if key not in decoded_map:
                 continue
             decoded_arr, fetched_nids = decoded_map[key]
-            out[key] = {
-                int(nid): decoded_arr[i]
-                for i, nid in enumerate(fetched_nids)
-            }
+            out[key] = {int(nid): decoded_arr[i] for i, nid in enumerate(fetched_nids)}
         return out
 
     def _cache_get(
         self,
         attrs: list[TensorAttr],
-    ) -> tuple[dict[tuple[NodeType | None, str], dict[int, np.ndarray]],
-               list[TensorAttr]]:
+    ) -> tuple[
+        dict[tuple[NodeType | None, str], dict[int, np.ndarray]], list[TensorAttr]
+    ]:
         r"""Look up *attrs* in the cache via
         :meth:`FeatureCache.multi_get`.
 
@@ -451,8 +450,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         return out[0] if out else None
 
     @abstractmethod
-    def _get_tensor_size(self, attr: TensorAttr) -> tuple[int, ...] | None:
-        ...
+    def _get_tensor_size(self, attr: TensorAttr) -> tuple[int, ...] | None: ...
 
     def _put_tensor(self, tensor: FeatureTensorType, attr: TensorAttr) -> bool:
         r"""Write *tensor* via :meth:`_put_tensor_db` and invalidate the
@@ -460,8 +458,9 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         """
         ok = self._put_tensor_db(tensor, attr)
         if ok and self._cache is not None:
-            self._cache.invalidate(attr.group_name, attr.attr_name,
-                                   _nids_from_attr(attr))
+            self._cache.invalidate(
+                attr.group_name, attr.attr_name, _nids_from_attr(attr)
+            )
         return ok
 
     def _remove_tensor(self, attr: TensorAttr) -> bool:
@@ -471,7 +470,7 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         """
         ok = self._remove_tensor_db(attr)
         if ok and self._cache is not None:
-            nids = (_nids_from_attr(attr) if attr.index is not None else None)
+            nids = _nids_from_attr(attr) if attr.index is not None else None
             self._cache.invalidate(attr.group_name, attr.attr_name, nids)
         return ok
 
@@ -490,5 +489,4 @@ class DatabaseFeatureStore(FeatureStore, ABC):
         """
 
     @abstractmethod
-    def get_all_tensor_attrs(self) -> list[TensorAttr]:
-        ...
+    def get_all_tensor_attrs(self) -> list[TensorAttr]: ...

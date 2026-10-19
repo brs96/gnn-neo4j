@@ -5,13 +5,13 @@ from typing import Any
 import numpy as np
 import torch
 from neo4j import Driver, GraphDatabase
+from torch_geometric.data.feature_store import TensorAttr
+from torch_geometric.typing import NodeType
 
-from torch_geometric.data.database_feature_store import (
+from gnn_neo4j.data.database_feature_store import (
     DatabaseFeatureStore,
     FeatureCache,
 )
-from torch_geometric.data.feature_store import TensorAttr
-from torch_geometric.typing import NodeType
 
 _CYPHER_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -25,7 +25,7 @@ def _close_driver(driver: Driver) -> None:
 
 
 class Neo4jFeatureStore(DatabaseFeatureStore):
-    r"""A generalized :class:`~torch_geometric.data.DatabaseFeatureStore`
+    r"""A generalized :class:`~gnn_neo4j.data.DatabaseFeatureStore`
     backed by Neo4j.
 
     The set of tensor attributes and their
@@ -76,6 +76,7 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         default_node_label (str, optional): Node label used in the database
             query when ``TensorAttr.group_name`` is ``None``.
     """
+
     def __init__(
         self,
         attr_map: dict[Any, Any],
@@ -103,13 +104,14 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         # ``default_node_label`` (or ``None`` when no default is given) so
         # homogeneous callers continue to work unchanged.
         sample_val = next(iter(attr_map.values()))
-        is_nested = isinstance(sample_val, dict) and all(
-            isinstance(v, dict) for v in attr_map.values()
-        ) and not {"property", "dtype", "encoding"} & set(sample_val.keys())
+        is_nested = (
+            isinstance(sample_val, dict)
+            and all(isinstance(v, dict) for v in attr_map.values())
+            and not {"property", "dtype", "encoding"} & set(sample_val.keys())
+        )
         if is_nested:
             self.attr_map: dict[NodeType | None, dict[str, dict[str, str]]] = {
-                g: dict(spec)
-                for g, spec in attr_map.items()
+                g: dict(spec) for g, spec in attr_map.items()
             }
         else:
             self.attr_map = {default_node_label: dict(attr_map)}
@@ -117,7 +119,8 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         self._labels: dict[tuple[NodeType | None, str], dict[str, int]] = {
             (group, name): {}
             for group, group_map in self.attr_map.items()
-            for name, spec in group_map.items() if spec.get("dtype") == "str"
+            for name, spec in group_map.items()
+            if spec.get("dtype") == "str"
         }
 
         # All identifiers below are interpolated directly into Cypher, so
@@ -140,7 +143,8 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         if value is not None and not _CYPHER_IDENT_RE.match(value):
             raise ValueError(
                 f"{name} must be a valid Cypher identifier matching "
-                f"{_CYPHER_IDENT_RE.pattern!r}; got {value!r}.")
+                f"{_CYPHER_IDENT_RE.pattern!r}; got {value!r}."
+            )
 
     def _resolve_group(self, group_name: NodeType | None) -> NodeType | None:
         r"""Pick the attr_map group key for *group_name*.
@@ -154,7 +158,8 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         raise KeyError(
             f"No attr_map entry for group '{group_name}' "
             f"(tried default '{self.default_node_label}' and None). "
-            f"Known groups: {list(self.attr_map)}")
+            f"Known groups: {list(self.attr_map)}"
+        )
 
     def _get_spec(
         self,
@@ -164,8 +169,10 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         group = self._resolve_group(group_name)
         group_map = self.attr_map[group]
         if attr_name not in group_map:
-            raise ValueError(f"attr '{attr_name}' is not registered for group "
-                             f"'{group}'. Known attrs: {list(group_map)}")
+            raise ValueError(
+                f"attr '{attr_name}' is not registered for group "
+                f"'{group}'. Known attrs: {list(group_map)}"
+            )
         return group_map[attr_name]
 
     def _build_query(
@@ -178,11 +185,14 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         self._validate_cypher_ident("node_label", node_label)
         lf = f":{node_label}" if node_label else ""
         group_map = self.attr_map[group_key]
-        return_cols = ", ".join(f"n.{group_map[name]['property']} AS {name}"
-                                for name in attr_names)
-        return (f"UNWIND $node_ids AS nid "
-                f"MATCH (n{lf} {{{self.nodeid_property}: nid}}) "
-                f"RETURN nid AS id, {return_cols}")
+        return_cols = ", ".join(
+            f"n.{group_map[name]['property']} AS {name}" for name in attr_names
+        )
+        return (
+            f"UNWIND $node_ids AS nid "
+            f"MATCH (n{lf} {{{self.nodeid_property}: nid}}) "
+            f"RETURN nid AS id, {return_cols}"
+        )
 
     def _fetch_remote_attrs(
         self,
@@ -190,15 +200,18 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
     ) -> tuple[list[object], list[int]]:
         r"""Fetch a single attr from the database."""
         index = attr.index
-        node_ids: list[int] = (index.tolist() if isinstance(
-            index, torch.Tensor) else list(index))
+        node_ids: list[int] = (
+            index.tolist() if isinstance(index, torch.Tensor) else list(index)
+        )
 
         group_key = self._resolve_group(attr.group_name)
-        node_label = (attr.group_name if attr.group_name is not None else
-                      self.default_node_label)
+        node_label = (
+            attr.group_name if attr.group_name is not None else self.default_node_label
+        )
         query = self._build_query([attr.attr_name], node_label, group_key)
-        with self._get_driver().session(database=self.database_name,
-                                        fetch_size=1000) as session:
+        with self._get_driver().session(
+            database=self.database_name, fetch_size=1000
+        ) as session:
             records = list(session.run(query, node_ids=node_ids))
 
         fetched_nids = [rec["id"] for rec in records]
@@ -215,16 +228,16 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
 
         if not records:
             if spec.get("dtype", "float32") == "float32":
-                return np.empty((0, ), dtype=np.float32)
+                return np.empty((0,), dtype=np.float32)
             else:
-                return np.empty((0, ), dtype=np.int64)
+                return np.empty((0,), dtype=np.int64)
 
         if spec.get("dtype", "float32") == "float32":
-            return self._decode_float_col(records, name,
-                                          spec.get("encoding", "f64[]"))
+            return self._decode_float_col(records, name, spec.get("encoding", "f64[]"))
         else:
-            return self._decode_label_col(records, attr.group_name, name,
-                                          spec.get("dtype") == "str")
+            return self._decode_label_col(
+                records, attr.group_name, name, spec.get("dtype") == "str"
+            )
 
     def _decode_float_col(
         self,
@@ -233,10 +246,12 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         encoding: str,
     ) -> np.ndarray:
         if encoding == "byte[]":
-            return np.stack([
-                np.frombuffer(memoryview(rec[field]), dtype=np.float32)
-                for rec in records
-            ])
+            return np.stack(
+                [
+                    np.frombuffer(memoryview(rec[field]), dtype=np.float32)
+                    for rec in records
+                ]
+            )
         return np.asarray([rec[field] for rec in records], dtype=np.float32)
 
     def _decode_label_col(
@@ -248,8 +263,7 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
     ) -> np.ndarray:
         arr = np.empty(len(records), dtype=np.int64)
         group_key = self._resolve_group(group_name) if string_labels else None
-        vocab = self._labels.get(
-            (group_key, field), {}) if string_labels else {}
+        vocab = self._labels.get((group_key, field), {}) if string_labels else {}
         for i, rec in enumerate(records):
             val = rec[field]
             if val is None:
@@ -267,7 +281,8 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
     def get_all_tensor_attrs(self) -> list[TensorAttr]:
         return [
             TensorAttr(group_name=group, attr_name=name)
-            for group, group_map in self.attr_map.items() for name in group_map
+            for group, group_map in self.attr_map.items()
+            for name in group_map
         ]
 
     def _get_tensor_size(self, attr: TensorAttr) -> tuple[int, ...] | None:
@@ -290,8 +305,9 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         dtype = spec.get("dtype", "float32")
 
         index = attr.index
-        node_ids: list[int] = (index.tolist() if isinstance(
-            index, torch.Tensor) else list(index))
+        node_ids: list[int] = (
+            index.tolist() if isinstance(index, torch.Tensor) else list(index)
+        )
 
         arr = tensor.detach().cpu().numpy()
 
@@ -310,12 +326,13 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         node_label = group if group is not None else self.default_node_label
         self._validate_cypher_ident("node_label", node_label)
         lf = f":{node_label}" if node_label else ""
-        query = (f"UNWIND $rows AS r "
-                 f"MATCH (n{lf} {{{self.nodeid_property}: r.nid}}) "
-                 f"SET n.{prop} = r.val")
+        query = (
+            f"UNWIND $rows AS r "
+            f"MATCH (n{lf} {{{self.nodeid_property}: r.nid}}) "
+            f"SET n.{prop} = r.val"
+        )
 
-        with self._get_driver().session(
-                database=self.database_name) as session:
+        with self._get_driver().session(database=self.database_name) as session:
             session.run(query, rows=rows)
 
         return True
@@ -336,18 +353,19 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
 
         if attr.index is not None:
             index = attr.index
-            node_ids: list[int] = (index.tolist() if isinstance(
-                index, torch.Tensor) else list(index))
-            query = (f"UNWIND $node_ids AS nid "
-                     f"MATCH (n{lf} {{{self.nodeid_property}: nid}}) "
-                     f"REMOVE n.{prop}")
-            with self._get_driver().session(
-                    database=self.database_name) as session:
+            node_ids: list[int] = (
+                index.tolist() if isinstance(index, torch.Tensor) else list(index)
+            )
+            query = (
+                f"UNWIND $node_ids AS nid "
+                f"MATCH (n{lf} {{{self.nodeid_property}: nid}}) "
+                f"REMOVE n.{prop}"
+            )
+            with self._get_driver().session(database=self.database_name) as session:
                 session.run(query, node_ids=node_ids)
         else:
             query = f"MATCH (n{lf}) REMOVE n.{prop}"
-            with self._get_driver().session(
-                    database=self.database_name) as session:
+            with self._get_driver().session(database=self.database_name) as session:
                 session.run(query)
 
         return True
@@ -358,8 +376,7 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
         (procedure missing, auth, connectivity) is treated as unavailable.
         """
         try:
-            with self._get_driver().session(
-                    database=self.database_name) as session:
+            with self._get_driver().session(database=self.database_name) as session:
                 session.run("RETURN apoc.version() AS v").single()
             return True
         except Exception:
@@ -367,8 +384,7 @@ class Neo4jFeatureStore(DatabaseFeatureStore):
 
     def _get_driver(self) -> Driver:
         if self._driver is None:
-            self._driver = GraphDatabase.driver(self.uri,
-                                                auth=(self.user, self.pwd))
+            self._driver = GraphDatabase.driver(self.uri, auth=(self.user, self.pwd))
             # weakref.finalize (not atexit) so the handler is dropped when
             # this store is garbage-collected. atexit.register would stack a
             # new handler per unpickled copy (DataLoader workers) and never

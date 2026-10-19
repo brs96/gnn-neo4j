@@ -1,4 +1,5 @@
 """Unit tests for Neo4jFeatureStore — mocked driver, no real Neo4j."""
+
 import pickle
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -6,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import torch
-
 from torch_geometric.data.feature_store import TensorAttr
 from torch_geometric.testing import withPackage
 
 
 def _make_store(attr_map, default_node_label="Paper", cache=None):
-    from examples.neo4j.data.neo4j_feature_store import Neo4jFeatureStore
+    from gnn_neo4j.data import Neo4jFeatureStore
+
     return Neo4jFeatureStore(
         attr_map=attr_map,
         uri="bolt://fake:7687",
@@ -45,77 +46,57 @@ def _mock_session(records: list):
         yield mock_session
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_attr_map_flat_wrapped_under_default_label():
-    store = _make_store({"x": {
-        "property": "x",
-        "dtype": "float32"
-    }}, default_node_label="Paper")
+    store = _make_store(
+        {"x": {"property": "x", "dtype": "float32"}}, default_node_label="Paper"
+    )
     assert "Paper" in store.attr_map
     assert "x" in store.attr_map["Paper"]
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_attr_map_nested_kept_as_is():
     nested = {
-        "Author": {
-            "name": {
-                "property": "name",
-                "dtype": "str"
-            }
-        },
-        "Paper": {
-            "x": {
-                "property": "x",
-                "dtype": "float32"
-            }
-        },
+        "Author": {"name": {"property": "name", "dtype": "str"}},
+        "Paper": {"x": {"property": "x", "dtype": "float32"}},
     }
     store = _make_store(nested)
     assert store.attr_map["Author"]["name"]["dtype"] == "str"
     assert store.attr_map["Paper"]["x"]["property"] == "x"
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_attr_map_empty_raises():
     with pytest.raises(ValueError):
         _make_store({})
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_resolve_group_returns_default_label_when_none():
     store = _make_store({"x": {"property": "x", "dtype": "float32"}})
     resolved = store._resolve_group(None)
     assert resolved == "Paper"
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_resolve_group_unknown_raises():
     store = _make_store(
-        {"Paper": {
-            "x": {
-                "property": "x",
-                "dtype": "float32"
-            }
-        }},
+        {"Paper": {"x": {"property": "x", "dtype": "float32"}}},
         default_node_label=None,
     )
     with pytest.raises(KeyError):
         store._resolve_group("DoesNotExist")
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_build_query_includes_label_and_return_cols():
-    store = _make_store({
-        "x": {
-            "property": "feat",
-            "dtype": "float32"
-        },
-        "y": {
-            "property": "label",
-            "dtype": "int64"
-        },
-    })
+    store = _make_store(
+        {
+            "x": {"property": "feat", "dtype": "float32"},
+            "y": {"property": "label", "dtype": "int64"},
+        }
+    )
     query = store._build_query(["x"], "Paper", "Paper")
     assert ":Paper" in query
     assert "n.feat AS x" in query
@@ -123,18 +104,17 @@ def test_build_query_includes_label_and_return_cols():
     assert "nodeId" in query
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_build_query_no_label_when_none():
-    store = _make_store({"x": {
-        "property": "x",
-        "dtype": "float32"
-    }}, default_node_label=None)
+    store = _make_store(
+        {"x": {"property": "x", "dtype": "float32"}}, default_node_label=None
+    )
     query = store._build_query(["x"], None, None)
     assert ":None" not in query
     assert "MATCH (n {" in query
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_float_col_f64_array():
     store = _make_store({"x": {"property": "x", "dtype": "float32"}})
     records = [{"x": [1.0, 2.0]}, {"x": [3.0, 4.0]}]
@@ -144,14 +124,11 @@ def test_decode_float_col_f64_array():
     assert out[0, 0] == pytest.approx(1.0)
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_float_col_byte_encoding():
     store = _make_store(
-        {"x": {
-            "property": "x",
-            "dtype": "float32",
-            "encoding": "byte[]"
-        }})
+        {"x": {"property": "x", "dtype": "float32", "encoding": "byte[]"}}
+    )
     raw = np.array([1.0, 2.0], dtype=np.float32).tobytes()
     records = [{"x": raw}]
     out = store._decode_float_col(records, "x", "byte[]")
@@ -159,14 +136,14 @@ def test_decode_float_col_byte_encoding():
     assert out[0, 0] == pytest.approx(1.0)
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_float_col_empty_records():
     store = _make_store({"x": {"property": "x", "dtype": "float32"}})
     out = store._decode_float_col([], "x", "f64[]")
-    assert out.shape == (0, )
+    assert out.shape == (0,)
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_label_col_int_labels():
     store = _make_store({"y": {"property": "y", "dtype": "int64"}})
     records = [{"y": 3}, {"y": 1}, {"y": 5}]
@@ -174,7 +151,7 @@ def test_decode_label_col_int_labels():
     assert out.tolist() == [3, 1, 5]
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_label_col_string_builds_vocab():
     store = _make_store({"y": {"property": "y", "dtype": "str"}})
     records = [{"y": "cat"}, {"y": "dog"}, {"y": "cat"}]
@@ -183,7 +160,7 @@ def test_decode_label_col_string_builds_vocab():
     assert out[0] != out[1]  # different for "dog"
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_decode_label_col_none_value_gives_minus_one():
     store = _make_store({"y": {"property": "y", "dtype": "int64"}})
     records = [{"y": None}]
@@ -191,16 +168,14 @@ def test_decode_label_col_none_value_gives_minus_one():
     assert out[0] == -1
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_put_tensor_db_sends_list_payload_for_f64():
     store = _make_store(
-        {"x": {
-            "property": "feat",
-            "dtype": "float32",
-            "encoding": "f64[]"
-        }})
-    attr = TensorAttr(group_name="Paper", attr_name="x",
-                      index=torch.tensor([0], dtype=torch.long))
+        {"x": {"property": "feat", "dtype": "float32", "encoding": "f64[]"}}
+    )
+    attr = TensorAttr(
+        group_name="Paper", attr_name="x", index=torch.tensor([0], dtype=torch.long)
+    )
     tensor = torch.tensor([[1.0, 2.0]])
 
     with _mock_session([]) as sess:
@@ -212,16 +187,14 @@ def test_put_tensor_db_sends_list_payload_for_f64():
     assert isinstance(rows[0]["val"], list)
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_put_tensor_db_sends_bytes_payload_for_byte_encoding():
     store = _make_store(
-        {"x": {
-            "property": "feat",
-            "dtype": "float32",
-            "encoding": "byte[]"
-        }})
-    attr = TensorAttr(group_name="Paper", attr_name="x",
-                      index=torch.tensor([0], dtype=torch.long))
+        {"x": {"property": "feat", "dtype": "float32", "encoding": "byte[]"}}
+    )
+    attr = TensorAttr(
+        group_name="Paper", attr_name="x", index=torch.tensor([0], dtype=torch.long)
+    )
     tensor = torch.tensor([[1.0, 2.0]])
 
     with _mock_session([]) as sess:
@@ -231,11 +204,12 @@ def test_put_tensor_db_sends_bytes_payload_for_byte_encoding():
     assert isinstance(rows[0]["val"], bytes)
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_remove_tensor_db_with_index_uses_unwind():
     store = _make_store({"x": {"property": "feat", "dtype": "float32"}})
-    attr = TensorAttr(group_name="Paper", attr_name="x",
-                      index=torch.tensor([0, 1], dtype=torch.long))
+    attr = TensorAttr(
+        group_name="Paper", attr_name="x", index=torch.tensor([0, 1], dtype=torch.long)
+    )
 
     with _mock_session([]) as sess:
         store._remove_tensor_db(attr)
@@ -245,7 +219,7 @@ def test_remove_tensor_db_with_index_uses_unwind():
     assert "REMOVE n.feat" in cypher
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_remove_tensor_db_no_index_wipes_whole_label():
     store = _make_store({"x": {"property": "feat", "dtype": "float32"}})
     attr = TensorAttr(group_name="Paper", attr_name="x", index=None)
@@ -259,7 +233,7 @@ def test_remove_tensor_db_no_index_wipes_whole_label():
     assert "REMOVE n.feat" in cypher
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_pickle_resets_driver():
     store = _make_store({"x": {"property": "x", "dtype": "float32"}})
     with patch("neo4j.GraphDatabase.driver", return_value=MagicMock()):

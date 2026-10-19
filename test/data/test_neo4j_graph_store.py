@@ -1,16 +1,17 @@
 """Unit tests for Neo4jGraphStore — mocked driver, no real Neo4j."""
+
 import pickle
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import torch
-
 from torch_geometric.data.graph_store import EdgeAttr, EdgeLayout
 from torch_geometric.testing import withPackage
 
 
 def _make_store():
-    from examples.neo4j.data.neo4j_graph_store import Neo4jGraphStore
+    from gnn_neo4j.data import Neo4jGraphStore
+
     return Neo4jGraphStore(
         uri="bolt://fake:7687",
         user="neo4j",
@@ -39,23 +40,31 @@ def _mock_session(records):
         yield mock_session
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_get_edge_index_coo_returns_row_col():
     store = _make_store()
     records = [{"src": 0, "dst": 1}, {"src": 1, "dst": 2}]
-    attr = EdgeAttr(edge_type=("Paper", "CITES", "Paper"),
-                    layout=EdgeLayout.COO, is_sorted=False, size=None)
+    attr = EdgeAttr(
+        edge_type=("Paper", "CITES", "Paper"),
+        layout=EdgeLayout.COO,
+        is_sorted=False,
+        size=None,
+    )
     with _mock_session(records):
         row, col = store._get_edge_index(attr)
     assert row.tolist() == [0, 1]
     assert col.tolist() == [1, 2]
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_get_edge_index_empty_returns_empty_tensors():
     store = _make_store()
-    attr = EdgeAttr(edge_type=("Paper", "CITES", "Paper"),
-                    layout=EdgeLayout.COO, is_sorted=False, size=None)
+    attr = EdgeAttr(
+        edge_type=("Paper", "CITES", "Paper"),
+        layout=EdgeLayout.COO,
+        is_sorted=False,
+        size=None,
+    )
     with _mock_session([]):
         result = store._get_edge_index(attr)
     row, col = result
@@ -63,12 +72,16 @@ def test_get_edge_index_empty_returns_empty_tensors():
     assert col.numel() == 0
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_get_edge_index_csc_sorts_by_col_preserving_pairs():
     store = _make_store()
     records = [{"src": 2, "dst": 0}, {"src": 1, "dst": 1}]
-    attr = EdgeAttr(edge_type=("Paper", "CITES", "Paper"),
-                    layout=EdgeLayout.CSC, is_sorted=False, size=None)
+    attr = EdgeAttr(
+        edge_type=("Paper", "CITES", "Paper"),
+        layout=EdgeLayout.CSC,
+        is_sorted=False,
+        size=None,
+    )
     with _mock_session(records):
         row, col = store._get_edge_index(attr)
     # CSC: sorted by col, row reordered consistently with its pair.
@@ -76,11 +89,15 @@ def test_get_edge_index_csc_sorts_by_col_preserving_pairs():
     assert row.tolist() == [2, 1]
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_put_edge_index_issues_merge_query():
     store = _make_store()
-    attr = EdgeAttr(edge_type=("Paper", "CITES", "Paper"),
-                    layout=EdgeLayout.COO, is_sorted=False, size=None)
+    attr = EdgeAttr(
+        edge_type=("Paper", "CITES", "Paper"),
+        layout=EdgeLayout.COO,
+        is_sorted=False,
+        size=None,
+    )
     with _mock_session([]) as sess:
         store._put_edge_index((torch.tensor([0]), torch.tensor([1])), attr)
     cypher = sess.run.call_args[0][0]
@@ -88,11 +105,15 @@ def test_put_edge_index_issues_merge_query():
     assert "CITES" in cypher
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_remove_edge_index_issues_delete_query():
     store = _make_store()
-    attr = EdgeAttr(edge_type=("Paper", "CITES", "Paper"),
-                    layout=EdgeLayout.COO, is_sorted=False, size=None)
+    attr = EdgeAttr(
+        edge_type=("Paper", "CITES", "Paper"),
+        layout=EdgeLayout.COO,
+        is_sorted=False,
+        size=None,
+    )
     with _mock_session([]) as sess:
         store._remove_edge_index(attr)
     cypher = sess.run.call_args[0][0]
@@ -100,7 +121,7 @@ def test_remove_edge_index_issues_delete_query():
     assert "CITES" in cypher
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_apoc_available_true():
     store = _make_store()
     mock_session = MagicMock()
@@ -109,7 +130,7 @@ def test_apoc_available_true():
         assert store.apoc_available() is True
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_apoc_available_false_on_exception():
     store = _make_store()
     mock_session = MagicMock()
@@ -118,7 +139,7 @@ def test_apoc_available_false_on_exception():
         assert store.apoc_available() is False
 
 
-@withPackage('neo4j')
+@withPackage("neo4j")
 def test_pickle_resets_driver():
     store = _make_store()
     with patch("neo4j.GraphDatabase.driver", return_value=MagicMock()):

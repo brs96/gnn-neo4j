@@ -17,6 +17,7 @@ class DatabaseGraphStore(GraphStore, ABC):
         edge_attr_cls (EdgeAttr, optional): User-defined :class:`EdgeAttr`
             subclass. (default: :obj:`None`)
     """
+
     def __init__(self, edge_attr_cls: Any | None = None):
         super().__init__(edge_attr_cls=edge_attr_cls)
 

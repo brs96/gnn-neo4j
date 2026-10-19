@@ -2,10 +2,10 @@ Database-backed graph storage and sampling
 ==========================================
 
 .. note::
-    This tutorial introduces the :class:`~torch_geometric.data.DatabaseGraphStore`,
-    :class:`~torch_geometric.data.DatabaseFeatureStore`, and
-    :class:`~torch_geometric.sampler.DatabaseSampler` abstractions.
-    See `examples/neo4j/cora` for a runnable example using Neo4j as the backend.
+    This tutorial introduces the :class:`~gnn_neo4j.data.DatabaseGraphStore`,
+    :class:`~gnn_neo4j.data.DatabaseFeatureStore`, and
+    :class:`~gnn_neo4j.sampler.DatabaseSampler` abstractions.
+    See `examples/cora` for a runnable example using Neo4j as the backend.
 
 A common way to support large-graph GNN training is to keep graph
 topology and features in RAM of the training machine(s). This can
@@ -38,13 +38,13 @@ Key Advantages
    batch. This enables large graph training without the need for a big RAM machine.
 #. **Backend-agnostic ABCs** — any database with a query language can be
    plugged in by subclassing three abstract classes
-   (:class:`~torch_geometric.data.DatabaseGraphStore`,
-   :class:`~torch_geometric.data.DatabaseFeatureStore`,
-   :class:`~torch_geometric.sampler.DatabaseSampler`) and writing the
+   (:class:`~gnn_neo4j.data.DatabaseGraphStore`,
+   :class:`~gnn_neo4j.data.DatabaseFeatureStore`,
+   :class:`~gnn_neo4j.sampler.DatabaseSampler`) and writing the
    queries.
 #. **Server-side sampling** — the sampler ships a single
    pre-compiled query (e.g. Cypher) per mini-batch.
-#. **Pluggable feature cache** — :class:`~torch_geometric.data.FeatureCache`
+#. **Pluggable feature cache** — :class:`~gnn_neo4j.data.FeatureCache`
    is an ABC; an in-memory :class:`LRUFeatureCache` is provided as a
    default, and Redis / on-disk / distributed caches drop in via subclass.
 #. **Unchanged training loop** — the stack composes with the standard
@@ -62,35 +62,35 @@ Architecture Components
 
 .. note::
     The purpose of this tutorial is to walk you through the moving parts.
-    For a runnable Cora example see
-    `examples/neo4j/cora <https://github.com/pyg-team/pytorch_geometric/tree/master/examples/neo4j>`_.
+    For a runnable Cora example see ``examples/cora``.
 
 Overall, the ``Database*`` stack is divided into the following components:
 
-* :class:`~torch_geometric.data.DatabaseGraphStore` — abstract
+* :class:`~gnn_neo4j.data.DatabaseGraphStore` — abstract
   :class:`~torch_geometric.data.GraphStore`. Owns the database connection
-  and exposes one hook, :meth:`~torch_geometric.data.DatabaseGraphStore.query_db`,
+  and exposes one hook, :meth:`~gnn_neo4j.data.DatabaseGraphStore.query_db`,
   through which any query (sampling, edge lookup) is executed. In this stack,
   the query is often a database-side sampling algorithm, such as the
-  pre-compiled query passed in by :class:`~torch_geometric.sampler.DatabaseSampler`.
+  pre-compiled query passed in by :class:`~gnn_neo4j.sampler.DatabaseSampler`.
   The caller is responsible for decoding the raw record into PyG tensors,
   as the graph store is agnostic to the query semantics and output format.
-* :class:`~torch_geometric.data.DatabaseFeatureStore` — abstract
+* :class:`~gnn_neo4j.data.DatabaseFeatureStore` — abstract
   :class:`~torch_geometric.data.FeatureStore`. Owns the full mini-batch
   retrieval loop: cache lookup -> batched database fetch -> decode -> cache
   fill -> output tensor assembly.
-* :class:`~torch_geometric.data.FeatureCache` /
-  :class:`~torch_geometric.data.LRUFeatureCache` — pluggable per-node-row
+* :class:`~gnn_neo4j.data.FeatureCache` /
+  :class:`~gnn_neo4j.data.LRUFeatureCache` — pluggable per-node-row
   cache used by :class:`DatabaseFeatureStore` to avoid redundant database queries.
-* :class:`~torch_geometric.sampler.DatabaseSampler` — abstract
+* :class:`~gnn_neo4j.sampler.DatabaseSampler` — abstract
   :class:`~torch_geometric.sampler.BaseSampler`. Defines the sampling algorithm
   as a single pre-compiled query (e.g. Cypher) and a per-batch parameter builder,
-  that is later sent to the :class:`~torch_geometric.data.DatabaseGraphStore`
+  that is later sent to the :class:`~gnn_neo4j.data.DatabaseGraphStore`
   to be executed on the backend. The sampler then decodes the raw record into
   ``(node, row, col)`` COO tensors.
-* Concrete reference impls in ``examples/neo4j``:
-  :class:`Neo4jGraphStore`, :class:`Neo4jFeatureStore`,
-  :class:`Neo4jGraphSAGESampler`.
+* Concrete Neo4j implementations:
+  :class:`~gnn_neo4j.data.Neo4jGraphStore`,
+  :class:`~gnn_neo4j.data.Neo4jFeatureStore`,
+  :class:`~gnn_neo4j.sampler.Neo4jGraphSAGESampler`.
 
 .. figure:: ../_figures/database_classes_diagram.png
    :align: center
@@ -131,21 +131,21 @@ The end-to-end mini-batch path:
 Database Graph Store
 ~~~~~~~~~~~~~~~~~~~~
 
-:class:`~torch_geometric.data.DatabaseGraphStore` exposes a single
-:meth:`~torch_geometric.data.DatabaseGraphStore.query_db(query, params)` hook that the
+:class:`~gnn_neo4j.data.DatabaseGraphStore` exposes a single
+:meth:`~gnn_neo4j.data.DatabaseGraphStore.query_db(query, params)` hook that the
 sampler (and any other caller) uses for all database round-trips — sampling,
 edge lookups, and ad-hoc inspection alike.
 
 .. warning::
-    The :class:`~torch_geometric.data.DatabaseGraphStore` is not responsible for
+    The :class:`~gnn_neo4j.data.DatabaseGraphStore` is not responsible for
     decoding the raw record into PyG tensors; the caller (e.g.
-    :class:`~torch_geometric.sampler.DatabaseSampler`) is.
+    :class:`~gnn_neo4j.sampler.DatabaseSampler`) is.
 
 
 Database Feature Store
 ~~~~~~~~~~~~~~~~~~~~~~
 
-:class:`~torch_geometric.data.DatabaseFeatureStore` implements the full
+:class:`~gnn_neo4j.data.DatabaseFeatureStore` implements the full
 mini-batch retrieval loop on top of two narrow hooks:
 
 * :meth:`_fetch_remote_attrs` — query the database for a single
@@ -170,9 +170,9 @@ The base class wires these into a cache-aware ``_multi_get_tensor`` that:
 
 **Pluggable caching:**
 
-Pass any :class:`~torch_geometric.data.FeatureCache` to the constructor,
+Pass any :class:`~gnn_neo4j.data.FeatureCache` to the constructor,
 or :obj:`None` to disable. The default
-:class:`~torch_geometric.data.LRUFeatureCache` is a bounded in-memory LRU
+:class:`~gnn_neo4j.data.LRUFeatureCache` is a bounded in-memory LRU
 backed by an :class:`collections.OrderedDict`.
 
 .. warning::
@@ -185,10 +185,10 @@ backed by an :class:`collections.OrderedDict`.
 Feature Cache
 ~~~~~~~~~~~~~
 
-Subclass :class:`~torch_geometric.data.FeatureCache` and implement
+Subclass :class:`~gnn_neo4j.data.FeatureCache` and implement
 :meth:`multi_get`, :meth:`multi_put`, and :meth:`invalidate` to plug in a
 custom cache backend (e.g. Redis or on-disk). The default
-:class:`~torch_geometric.data.LRUFeatureCache` is per-process, so each
+:class:`~gnn_neo4j.data.LRUFeatureCache` is per-process, so each
 DataLoader worker maintains its own copy. A shared cache is necessary to
 achieve cache coherence across workers.
 
@@ -196,7 +196,7 @@ achieve cache coherence across workers.
 Database Sampler
 ~~~~~~~~~~~~~~~~
 
-:class:`~torch_geometric.sampler.DatabaseSampler` runs multi-hop neighbor
+:class:`~gnn_neo4j.sampler.DatabaseSampler` runs multi-hop neighbor
 expansion **inside the database** via a single pre-compiled query per batch
 (see the figure above for the full pipeline). Subclasses override:
 

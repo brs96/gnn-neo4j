@@ -5,8 +5,8 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from torch_geometric.data.database_graph_store import DatabaseGraphStore
-from torch_geometric.sampler.database_sampler import DatabaseSampler
+from gnn_neo4j.data.database_graph_store import DatabaseGraphStore
+from gnn_neo4j.sampler.database_sampler import DatabaseSampler
 
 _CYPHER_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -33,6 +33,7 @@ class Neo4jSampler(DatabaseSampler, ABC):
             execution-plan introspection. (default: :obj:`False`)
         **kwargs: Forwarded to :class:`DatabaseSampler` (e.g. ``is_hetero``).
     """
+
     def __init__(
         self,
         graph_store: DatabaseGraphStore,
@@ -61,7 +62,8 @@ class Neo4jSampler(DatabaseSampler, ABC):
         if value is not None and not _CYPHER_IDENT_RE.match(value):
             raise ValueError(
                 f"{name} must be a valid Cypher identifier matching "
-                f"{_CYPHER_IDENT_RE.pattern!r}; got {value!r}.")
+                f"{_CYPHER_IDENT_RE.pattern!r}; got {value!r}."
+            )
 
     @classmethod
     def _probe_apoc(cls, graph_store: DatabaseGraphStore) -> None:
@@ -74,7 +76,8 @@ class Neo4jSampler(DatabaseSampler, ABC):
         if check is not None and not check():
             raise RuntimeError(
                 f"{cls.__name__} requires the APOC plugin. "
-                "Install APOC in the target Neo4j database and try again.")
+                "Install APOC in the target Neo4j database and try again."
+            )
 
 
 class Neo4jGraphSAGESampler(Neo4jSampler):
@@ -114,20 +117,22 @@ class Neo4jGraphSAGESampler(Neo4jSampler):
         profile (bool): Prepend ``PROFILE`` to the query for execution-plan
             profiling. (default: :obj:`False`)
     """
+
     def __init__(
         self,
         graph_store: DatabaseGraphStore,
         num_neighbors: list[int],
-        direction: str = 'incoming',
+        direction: str = "incoming",
         node_label: str | None = None,
         rel_type: str | None = None,
         induced: bool = False,
         profile: bool = False,
     ) -> None:
-        if direction not in ('incoming', 'outgoing', 'undirected'):
+        if direction not in ("incoming", "outgoing", "undirected"):
             raise ValueError(
                 f"direction must be one of 'incoming', 'outgoing', "
-                f"'undirected'; got {direction!r}.")
+                f"'undirected'; got {direction!r}."
+            )
 
         self.num_neighbors = num_neighbors
         self.direction = direction
@@ -146,7 +151,8 @@ class Neo4jGraphSAGESampler(Neo4jSampler):
         if seeds.numel() == 0:
             raise ValueError(
                 "Neo4jGraphSAGESampler received an empty seed batch; the "
-                "Cypher query cannot be evaluated against an empty list.")
+                "Cypher query cannot be evaluated against an empty list."
+            )
         return {"seed_ids": seeds.tolist()}
 
     def _build_node_sampling_query(self) -> str:
@@ -165,19 +171,21 @@ class Neo4jGraphSAGESampler(Neo4jSampler):
         seed_label = "" if self.node_label is None else f":{self.node_label}"
         nbr_label = "" if self.node_label is None else f":{self.node_label}"
 
-        if self.direction == 'incoming':
+        if self.direction == "incoming":
             # (src)<-[r]-(neighbor): startNode(r)=neighbor, endNode(r)=src
             edge_pat = f"<-[r{rel}]-"
             nbr_expr = "startNode(rel)"
-        elif self.direction == 'outgoing':
+        elif self.direction == "outgoing":
             # (src)-[r]->(neighbor): startNode(r)=src, endNode(r)=neighbor
             edge_pat = f"-[r{rel}]->"
             nbr_expr = "endNode(rel)"
         else:  # undirected
             edge_pat = f"-[r{rel}]-"
-            nbr_expr = (f"CASE WHEN startNode(rel).{self.nodeid_property} = "
-                        f"src.{self.nodeid_property} "
-                        f"THEN endNode(rel) ELSE startNode(rel) END")
+            nbr_expr = (
+                f"CASE WHEN startNode(rel).{self.nodeid_property} = "
+                f"src.{self.nodeid_property} "
+                f"THEN endNode(rel) ELSE startNode(rel) END"
+            )
 
         edge_src_expr = f"startNode(rel).{self.nodeid_property}"
         edge_dst_expr = f"endNode(rel).{self.nodeid_property}"
@@ -292,17 +300,12 @@ class Neo4jGraphSAGESampler(Neo4jSampler):
 
         global_ids = torch.tensor(record["nodes"], dtype=torch.long)
 
-        global_to_local = {
-            int(gid): i
-            for i, gid in enumerate(global_ids.tolist())
-        }
+        global_to_local = {int(gid): i for i, gid in enumerate(global_ids.tolist())}
 
         edges = record.get("edges") or []
         if edges:
-            row = torch.tensor([global_to_local[e[0]] for e in edges],
-                               dtype=torch.long)
-            col = torch.tensor([global_to_local[e[1]] for e in edges],
-                               dtype=torch.long)
+            row = torch.tensor([global_to_local[e[0]] for e in edges], dtype=torch.long)
+            col = torch.tensor([global_to_local[e[1]] for e in edges], dtype=torch.long)
         else:
             row = col = empty
 

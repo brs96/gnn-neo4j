@@ -2,8 +2,6 @@ from typing import Any
 
 import torch
 from torch import Tensor
-
-from torch_geometric.data.database_graph_store import DatabaseGraphStore
 from torch_geometric.sampler.base import (
     BaseSampler,
     EdgeSamplerInput,
@@ -11,6 +9,8 @@ from torch_geometric.sampler.base import (
     NodeSamplerInput,
     SamplerOutput,
 )
+
+from gnn_neo4j.data.database_graph_store import DatabaseGraphStore
 
 
 class DatabaseSampler(BaseSampler):
@@ -23,7 +23,7 @@ class DatabaseSampler(BaseSampler):
     2. Build query parameters via :meth:`_build_node_query_params` or
        :meth:`_build_edge_query_params`.
     3. Execute the pre-compiled query through
-       :meth:`~torch_geometric.data.DatabaseGraphStore.query_db`.
+       :meth:`~gnn_neo4j.data.DatabaseGraphStore.query_db`.
     4. Decode the raw record via :meth:`_decode_node_sampling_record` or
        :meth:`_decode_edge_sampling_record`.
     5. Wrap into :class:`~torch_geometric.sampler.SamplerOutput` or
@@ -38,6 +38,7 @@ class DatabaseSampler(BaseSampler):
         is_hetero (bool): Whether the graph is heterogeneous.
             (default: :obj:`False`)
     """
+
     def __init__(
         self,
         graph_store: DatabaseGraphStore,
@@ -78,7 +79,7 @@ class DatabaseSampler(BaseSampler):
 
         Returns:
             dict: Parameters passed to
-                :meth:`~torch_geometric.data.DatabaseGraphStore.query_db`.
+                :meth:`~gnn_neo4j.data.DatabaseGraphStore.query_db`.
         """
         return None
 
@@ -100,13 +101,12 @@ class DatabaseSampler(BaseSampler):
         empty = torch.zeros(0, dtype=torch.long)
         return seed_nodes, empty, empty
 
-    def _decode_node_sampling_record(self, record: Any,
-                                     seeds: Tensor) -> Any | None:
+    def _decode_node_sampling_record(self, record: Any, seeds: Tensor) -> Any | None:
         r"""Decode a raw record into ``(node, row, col)`` for node sampling.
 
         Args:
             record: Raw record returned by
-                :meth:`~torch_geometric.data.DatabaseGraphStore.query_db`.
+                :meth:`~gnn_neo4j.data.DatabaseGraphStore.query_db`.
             seeds (torch.Tensor): Seed node IDs used to build the query.
 
         Returns:
@@ -115,8 +115,7 @@ class DatabaseSampler(BaseSampler):
         """
         raise NotImplementedError
 
-    def _decode_edge_sampling_record(self, record: Any,
-                                     seeds: Tensor) -> Any | None:
+    def _decode_edge_sampling_record(self, record: Any, seeds: Tensor) -> Any | None:
         r"""Decode a raw record into ``(node, row, col)`` for edge sampling.
 
         Same contract as :meth:`_decode_node_sampling_record`.
@@ -140,8 +139,7 @@ class DatabaseSampler(BaseSampler):
                 node=node,
                 row=row,
                 col=col,
-                edge={et: None
-                      for et in row},
+                edge={et: None for et in row},
                 metadata=(seeds, seed_time),
             )
         return SamplerOutput(
@@ -177,7 +175,8 @@ class DatabaseSampler(BaseSampler):
         if not params:
             raise ValueError(
                 "Query parameters are empty. Check the implementation of "
-                "_build_node_query_params.")
+                "_build_node_query_params."
+            )
         record = self.graph_store.query_db(self.node_sampling_query, params)
         decoded = self._decode_node_sampling_record(record, seeds)
         if decoded is None:
@@ -209,7 +208,8 @@ class DatabaseSampler(BaseSampler):
         if neg_sampling is not None:
             raise NotImplementedError(
                 "negative sampling is not supported by DatabaseSampler; "
-                f"got neg_sampling={neg_sampling!r}.")
+                f"got neg_sampling={neg_sampling!r}."
+            )
 
         if not self.edge_sampling_query:
             raise ValueError("Edge sampling query is not built.")
@@ -223,7 +223,8 @@ class DatabaseSampler(BaseSampler):
         if not params:
             raise ValueError(
                 "Query parameters are empty. Check the implementation of "
-                "_build_edge_query_params.")
+                "_build_edge_query_params."
+            )
         record = self.graph_store.query_db(self.edge_sampling_query, params)
         decoded = self._decode_edge_sampling_record(record, seeds)
         if decoded is None:

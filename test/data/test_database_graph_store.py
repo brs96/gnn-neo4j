@@ -1,8 +1,9 @@
 """Unit tests for DatabaseGraphStore plumbing."""
-import pytest
 
-from torch_geometric.data.database_graph_store import DatabaseGraphStore
-from torch_geometric.testing import FakeDatabaseGraphStore
+import pytest
+from database_stores import FakeDatabaseGraphStore
+
+from gnn_neo4j.data.database_graph_store import DatabaseGraphStore
 
 
 def test_query_db_passes_query_and_kwargs():

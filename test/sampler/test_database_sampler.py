@@ -1,29 +1,28 @@
 """Unit tests for DatabaseSampler — no real database required."""
+
 import pytest
 import torch
-
+from database_stores import FakeDatabaseGraphStore, FakeDatabaseSampler
 from torch_geometric.sampler.base import (
     EdgeSamplerInput,
     HeteroSamplerOutput,
     NodeSamplerInput,
     SamplerOutput,
 )
-from torch_geometric.sampler.database_sampler import DatabaseSampler
-from torch_geometric.testing import FakeDatabaseGraphStore, FakeDatabaseSampler
+
+from gnn_neo4j.sampler.database_sampler import DatabaseSampler
 
 
 def _make_graph_store(nodes, edges):
     """Return FakeDatabaseGraphStore FAKE_NODE_QUERY returns nodes+edges."""
     record = {"nodes": nodes, "edges": edges}
-    return FakeDatabaseGraphStore(records={
-        "FAKE_NODE_QUERY": record,
-        "FAKE_EDGE_QUERY": record
-    })
+    return FakeDatabaseGraphStore(
+        records={"FAKE_NODE_QUERY": record, "FAKE_EDGE_QUERY": record}
+    )
 
 
 def _node_input(nids):
-    return NodeSamplerInput(input_id=None,
-                            node=torch.tensor(nids, dtype=torch.long))
+    return NodeSamplerInput(input_id=None, node=torch.tensor(nids, dtype=torch.long))
 
 
 def test_sample_from_nodes_returns_sampler_output():
@@ -62,6 +61,7 @@ def test_sample_from_nodes_metadata_roundtrip():
 
 def test_sample_from_nodes_missing_query_raises():
     """Subclass that returns None for node query raises ValueError."""
+
     class NoQuerySampler(DatabaseSampler):
         def _build_node_sampling_query(self):
             return None
@@ -135,10 +135,9 @@ def test_is_hetero_property_matches_constructor_arg():
 
 def test_hetero_output_when_is_hetero_true():
     """Empty hetero result produces HeteroSamplerOutput (no crash)."""
-    gs = FakeDatabaseGraphStore(records={
-        "FAKE_NODE_QUERY": None,
-        "FAKE_EDGE_QUERY": None
-    })
+    gs = FakeDatabaseGraphStore(
+        records={"FAKE_NODE_QUERY": None, "FAKE_EDGE_QUERY": None}
+    )
     sampler = FakeDatabaseSampler(gs, is_hetero=True)
     out = sampler.sample_from_nodes(_node_input([0]))
     assert isinstance(out, HeteroSamplerOutput)
@@ -148,10 +147,9 @@ def test_hetero_missing_input_type_spliced_into_node():
     """When seed's input_type absent from decoded node dict,
     seeds spliced in.
     """
-    gs = FakeDatabaseGraphStore(records={
-        "FAKE_NODE_QUERY": None,
-        "FAKE_EDGE_QUERY": None
-    })
+    gs = FakeDatabaseGraphStore(
+        records={"FAKE_NODE_QUERY": None, "FAKE_EDGE_QUERY": None}
+    )
     sampler = FakeDatabaseSampler(gs, is_hetero=True)
 
     seeds = torch.tensor([5, 6], dtype=torch.long)
