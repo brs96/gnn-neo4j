@@ -1,0 +1,28 @@
+[project]
+name = "gnn-neo4j"
+version = "0.1.0"
+description = "Training and inference of Graph Neural Networks on Neo4j"
+requires-python = "==3.13.*"
+dependencies = [
+    "neo4j==6.4.1",
+    "numpy==2.5.4",
+    "torch==2.14.1",
+    "torch-geometric==2.8.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
